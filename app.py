@@ -1,7 +1,8 @@
 from pathlib import Path
-from typing import List, Dict
+from typing import List
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
+from fastapi.routing import APIRouter
 from contextlib import asynccontextmanager
 from ansible.inventory.manager import InventoryManager
 from ansible.parsing.dataloader import DataLoader
@@ -19,7 +20,8 @@ VERSION="0.0.1"
 logger: Logger
 PUBKEYS = {}
 RESOURCES = Path() / "resources"
-PUBLIC_PATH: str = ""
+DOMAIN: str = ""
+ROOT_PATH: str = "/"
 ANSIBLE_INVENTORY_LOCATION: Path = Path()
 
 class NoPubkeysException(Exception):
@@ -58,18 +60,20 @@ def load_pubkey_locations():
         raise NoPubkeysException()
 
 def setup():
-    global ANSIBLE_INVENTORY_LOCATION, PUBLIC_PATH
+    global ANSIBLE_INVENTORY_LOCATION, ROOT_PATH
     log_level = os.environ.get("LOG_LEVEL")
     if not log_level or log_level.isspace() or len(log_level) == 0:
         # Annoying that I have to do this...
         log_level = "WARNING"
     create_logger(log_level)
-    PUBLIC_PATH = os.environ.get("PUBLIC_PATH", "")
-    if PUBLIC_PATH.endswith("/"):
-        PUBLIC_PATH = PUBLIC_PATH[:-1]
-    if len(PUBLIC_PATH) > 0:
-        logger.info("Setting Public Path to \"\"")
+    DOMAIN = os.environ.get("DOMAIN", "")
+    if len(DOMAIN) > 0:
+        logger.info(f"Setting Domain to \"{DOMAIN}\"")
     _raw_ansible_inventory_location = os.environ.get("ANSIBLE_INVENTORY_LOCATION")
+    ROOT_PATH = os.environ.get("ROOT_PATH", "")
+    if ROOT_PATH.endswith('/'):
+        ROOT_PATH = ROOT_PATH[:-1]
+    logger.info(f"Setting Root Path to \"{ROOT_PATH}\"")
     logger.debug("Checking Ansible Inventory Location")
     if not _raw_ansible_inventory_location or len(_raw_ansible_inventory_location) == 0:
         raise ValueError("Ansible Location not defined! Please set the environment variable ANSIBLE_INVENTORY_LOCATION")
@@ -89,31 +93,32 @@ def shutdown():
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # We have nothing to do beforehand
-    setup()
     yield
     shutdown()
 
 dotenv.load_dotenv()
-app = FastAPI(lifespan=lifespan)
+setup()
+print("Root Path", ROOT_PATH)
+router = APIRouter()
+app: FastAPI = None
 
 def get_environments() -> List[str]:
     return [env for env in PUBKEYS.keys()]
 
-def get_inventory() -> Dict[str, List[str]]:
+def get_inventory() -> InventoryManager:
     loader = DataLoader()
     inventory = InventoryManager(loader = loader, sources = [ str(ANSIBLE_INVENTORY_LOCATION.absolute())])
-    return inventory.get_groups_dict()
+    return inventory
 
 def generate_link(request: Request, path: str) -> str:
-    path_head=PUBLIC_PATH if len(PUBLIC_PATH) > 0 else f'{request.url.scheme}://{request.url.netloc}'
-    return f"{path_head}/{path}"
+    return f'{request.url.scheme}://{DOMAIN if len(DOMAIN) > 0 else request.url.netloc}{ROOT_PATH}/{path}'
 
-@app.get("/")
+@router.get("/")
 async def root():
     # TODO: Create webui enroller
     return "pong"
 
-@app.get("/enroll", response_class=PlainTextResponse)
+@router.get("/enroll", response_class=PlainTextResponse)
 async def enroll(request: Request):
     enroll_script = ""
     with open(RESOURCES / "enroll.sh", "r") as _in_file:
@@ -126,48 +131,42 @@ async def enroll(request: Request):
     enroll_script=enroll_script.replace("SSH_PUBKEY_LINK=", f'SSH_PUBKEY_LINK={pubkey_link}')
     return enroll_script
 
-@app.get("/inventory")
+@router.get("/inventory")
 async def inventory():
-    return get_inventory()
+    return get_inventory().get_groups_dict()
 
-@app.get("/do_enroll")
+@router.get("/do_enroll")
 async def do_enroll(hostname: str = "", os_type: str = "", environment: str = "", applications: str = ""):
-    app_list: List[str] = applications.split(',')
+    app_list: List[str] = applications.split(',') if len(applications) > 0 else []
     inventory=get_inventory()
-    all_inventory=inventory.get("all", list())
-    if hostname in all_inventory:
+    if inventory.get_host(hostname):
         # Nothing to do as the host is already enrolled
         return f"{hostname} is already enrolled"
-    if not inventory.get("all"):
-        inventory['all'] = []
-    inventory["all"].append(hostname)
-    if not inventory.get(os_type):
-        inventory[os_type] = []
-    if hostname not in inventory[os_type]:
-        inventory[os_type].append(hostname)
-    if not inventory.get(environment):
-        inventory[environment] = []
-    if hostname not in inventory[environment]:
-        inventory[environment].append(hostname)
+    groups=['all', os_type, environment]
     for app in app_list:
-        if not inventory.get(app):
-            inventory[app] = []
-        if hostname not in inventory[app]:
-            inventory[app].append(hostname)
+        groups.append(app)
     logger.debug(f"Adding {hostname} to the following groups. {os_type}, {environment}, {', '.join(app_list)}")
+
+    inventory_groups = inventory.get_groups_dict()
+    for group in groups:
+        if group not in inventory_groups.keys():
+            logger.warning(f"Adding new group \"{group}\"to inventory!")
+            inventory.add_group(group)
+        inventory.add_host(host=hostname, group=group)
+
     with open(ANSIBLE_INVENTORY_LOCATION, 'w') as _out_file:
-        yaml.dump(inventory, _out_file)
+        yaml.dump(inventory.get_groups_dict(), _out_file)
     next_merge="Never"
     return f"Successfully added \"{hostname}\" to ansible inventory. Next automated inventory merge is \"{next_merge}\""
 
-@app.get("/pubkey")
+@router.get("/pubkey")
 async def get_public_keys():
     keys = dict()
     for key, value in PUBKEYS.items():
         keys[key] = str(value)
     return keys
 
-@app.get("/pubkey/{environment}", response_class=PlainTextResponse)
+@router.get("/pubkey/{environment}", response_class=PlainTextResponse)
 async def get_public_key(environment):
     global PUBKEYS
     if not environment or not PUBKEYS.get(environment.upper()):
@@ -178,4 +177,6 @@ async def get_public_key(environment):
         )
     return str(PUBKEYS.get(environment.upper()))
 
+app = FastAPI(lifespan=lifespan, root_path=ROOT_PATH)
+app.include_router(router, prefix=ROOT_PATH)
 
