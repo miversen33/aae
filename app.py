@@ -98,7 +98,6 @@ async def lifespan(_: FastAPI):
 
 dotenv.load_dotenv()
 setup()
-print("Root Path", ROOT_PATH)
 router = APIRouter()
 app: FastAPI = None
 
