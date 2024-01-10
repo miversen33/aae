@@ -81,6 +81,7 @@ validate_ssh_config(){
 get_ssh_key(){
     env="$1"
     pubkey=$(curl -Lfs "${SSH_PUBKEY_LINK}/${env}")
+    touch "${SSH_AUTH_KEYS}"
     if ! grep -qF "${pubkey}" "${SSH_AUTH_KEYS}"; then
         debug "Ansible pubkey not found in root authorized keys. Fixing that"
         echo "${pubkey}" >> "${SSH_AUTH_KEYS}"
