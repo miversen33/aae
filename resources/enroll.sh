@@ -8,13 +8,11 @@
 
 DEBUG="${DEBUG:=1}"
 
-# SSH_CONFIG=/etc/ssh/sshd_config
-SSHD_CONFIG=./sshd_config
+SSH_CONFIG=/etc/ssh/sshd_config
 SSH_CONFIG_BACKUP=/tmp/sshd_config_$(date +%Y%m%d%H%M%S)
 # This will be dynamically populated by the server
 SSH_PUBKEY_LINK=
-# SSH_AUTH_KEYS=$HOME/.ssh/authorized_keys
-SSH_AUTH_KEYS=./authorized_keys
+SSH_AUTH_KEYS="${HOME}/.ssh/authorized_keys"
 
 # This will be dynamically populated by the server
 ENROLL_LINK=
