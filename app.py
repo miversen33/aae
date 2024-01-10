@@ -60,7 +60,7 @@ def load_pubkey_locations():
         raise NoPubkeysException()
 
 def setup():
-    global ANSIBLE_INVENTORY_LOCATION, ROOT_PATH
+    global ANSIBLE_INVENTORY_LOCATION, ROOT_PATH, DOMAIN
     log_level = os.environ.get("LOG_LEVEL")
     if not log_level or log_level.isspace() or len(log_level) == 0:
         # Annoying that I have to do this...
