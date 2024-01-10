@@ -8,8 +8,8 @@
 
 DEBUG="${DEBUG:=1}"
 
-SSH_CONFIG=/etc/ssh/sshd_config
-SSH_CONFIG_BACKUP=/tmp/sshd_config_$(date +%Y%m%d%H%M%S)
+SSHD_CONFIG=/etc/ssh/sshd_config
+SSHD_CONFIG_BACKUP=/tmp/sshd_config_$(date +%Y%m%d%H%M%S)
 # This will be dynamically populated by the server
 SSH_PUBKEY_LINK=
 SSH_AUTH_KEYS="${HOME}/.ssh/authorized_keys"
@@ -43,18 +43,18 @@ if [ $UID != 0 ]; then
 fi
 
 backup_ssh_config(){
-    debug "Backing up ${SSHD_CONFIG} to ${SSH_CONFIG_BACKUP}"
-    cp "${SSHD_CONFIG}" "${SSH_CONFIG_BACKUP}"
+    debug "Backing up ${SSHD_CONFIG} to ${SSHD_CONFIG_BACKUP}"
+    cp "${SSHD_CONFIG}" "${SSHD_CONFIG_BACKUP}"
 }
 
 revert_ssh_config(){
     debug "Restoring ${SSHD_CONFIG}"
-    mv "${SSH_CONFIG_BACKUP}" "${SSHD_CONFIG}"
+    mv "${SSHD_CONFIG_BACKUP}" "${SSHD_CONFIG}"
 }
 
 cleanup(){
     debug "Cleaning up after ourselves"
-    rm -f "${SSH_CONFIG_BACKUP}"
+    rm -f "${SSHD_CONFIG_BACKUP}"
 }
 
 validate_ssh_config(){
