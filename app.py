@@ -111,7 +111,12 @@ def generate_link(request: Request, path: str) -> str:
 @router.get("/")
 async def root():
     # TODO: Create webui enroller
+    return ""
+
+@router.get("/ping", response_class=PlainTextResponse)
+async def ping():
     return "pong"
+
 
 @router.get("/enroll", response_class=PlainTextResponse)
 async def enroll(request: Request):
