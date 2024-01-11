@@ -276,6 +276,7 @@ class Hosts():
 
     def _serialize_as_json(self) -> str:
         hosts = dict(all=list())
+        all_hosts = set()
         for group in self.get_groups():
             if not hosts.get(group):
                 hosts[group] = list()
@@ -286,8 +287,11 @@ class Hosts():
                         'variables': host.variables
                     }
                 }
-                hosts[group].append(serial_host)
-                hosts['all'].append(serial_host)
+                if group != 'all':
+                    hosts[group].append(serial_host)
+                if host.hostname not in all_hosts:
+                    hosts['all'].append(serial_host)
+                    all_hosts.add(host.hostname)
         return json.dumps(hosts)
 
     def __str__(self) -> str:
