@@ -1,18 +1,15 @@
 from pathlib import Path
 from typing import List
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
 from fastapi.routing import APIRouter
 from contextlib import asynccontextmanager
-from ansible.inventory.manager import InventoryManager
-from ansible.parsing.dataloader import DataLoader
 import dotenv
-import yaml
 import os
 
 import logging
 from logging import Logger
-
+from modules.host import Hosts
 from modules.pubkey import Pubkey, VALID_ACCESS_METHODS
 
 VERSION="0.0.1"
@@ -78,12 +75,12 @@ def setup():
     if not _raw_ansible_inventory_location or len(_raw_ansible_inventory_location) == 0:
         raise ValueError("Ansible Location not defined! Please set the environment variable ANSIBLE_INVENTORY_LOCATION")
     ANSIBLE_INVENTORY_LOCATION=Path(_raw_ansible_inventory_location)
-    if ANSIBLE_INVENTORY_LOCATION.exists() and not ANSIBLE_INVENTORY_LOCATION.is_file():
-        raise ValueError(f"Ansible location {_raw_ansible_inventory_location} is not a file!")
+    if ANSIBLE_INVENTORY_LOCATION.exists() and ANSIBLE_INVENTORY_LOCATION.is_file():
+        raise ValueError(f"Ansible location {_raw_ansible_inventory_location} is not a directory!")
     try:
-        ANSIBLE_INVENTORY_LOCATION.touch()
+        Path(ANSIBLE_INVENTORY_LOCATION / "hosts.ini").touch()
     except PermissionError:
-        raise ValueError(f"Unable to write to ansible location: {_raw_ansible_inventory_location}!")
+        raise ValueError(f"Unable to write to hosts file in ansible location: {_raw_ansible_inventory_location}!")
     load_pubkey_locations()
 
 def shutdown():
@@ -99,15 +96,14 @@ async def lifespan(_: FastAPI):
 dotenv.load_dotenv()
 setup()
 router = APIRouter()
-app: FastAPI = None
+app: FastAPI
 
 def get_environments() -> List[str]:
     return [env for env in PUBKEYS.keys()]
 
-def get_inventory() -> InventoryManager:
-    loader = DataLoader()
-    inventory = InventoryManager(loader = loader, sources = [ str(ANSIBLE_INVENTORY_LOCATION.absolute())])
-    return inventory
+def get_inventory() -> Hosts:
+    return Hosts.load(ANSIBLE_INVENTORY_LOCATION)
+
 
 def generate_link(request: Request, path: str) -> str:
     return f'{request.url.scheme}://{DOMAIN if len(DOMAIN) > 0 else request.url.netloc}{ROOT_PATH}/{path}'
@@ -131,30 +127,25 @@ async def enroll(request: Request):
     return enroll_script
 
 @router.get("/inventory")
-async def inventory():
-    return get_inventory().get_groups_dict()
+async def inventory(format: str = "json"):
+    inventory = get_inventory()
+    return Response(content = inventory.serialize(format), media_type='text/plain' if format != 'json' else 'application/json')
 
 @router.get("/do_enroll")
 async def do_enroll(hostname: str = "", os_type: str = "", environment: str = "", applications: str = ""):
     app_list: List[str] = applications.split(',') if len(applications) > 0 else []
     inventory=get_inventory()
-    if inventory.get_host(hostname):
+    if hostname in inventory:
         # Nothing to do as the host is already enrolled
         return f"{hostname} is already enrolled"
-    groups=['all', os_type, environment]
+    groups={'all', os_type, environment}
     for app in app_list:
-        groups.append(app)
+        groups.add(app)
     logger.debug(f"Adding {hostname} to the following groups. {os_type}, {environment}, {', '.join(app_list)}")
+    
+    inventory.add_host(hostname, list(groups))
+    inventory.save_to_disk(ANSIBLE_INVENTORY_LOCATION / 'hosts.yaml')
 
-    inventory_groups = inventory.get_groups_dict()
-    for group in groups:
-        if group not in inventory_groups.keys():
-            logger.warning(f"Adding new group \"{group}\"to inventory!")
-            inventory.add_group(group)
-        inventory.add_host(host=hostname, group=group)
-
-    with open(ANSIBLE_INVENTORY_LOCATION, 'w') as _out_file:
-        yaml.dump(inventory.get_groups_dict(), _out_file)
     next_merge="Never"
     return f"Successfully added \"{hostname}\" to ansible inventory. Next automated inventory merge is \"{next_merge}\""
 
