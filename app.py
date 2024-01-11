@@ -146,8 +146,14 @@ async def do_enroll(hostname: str = "", os_type: str = "", environment: str = ""
     inventory.add_host(hostname, list(groups))
     inventory.save_to_disk(ANSIBLE_INVENTORY_LOCATION / 'hosts.yaml')
 
-    next_merge="Never"
-    return f"Successfully added \"{hostname}\" to ansible inventory. Next automated inventory merge is \"{next_merge}\""
+    next_merge=""
+    next_update_file = Path(ANSIBLE_INVENTORY_LOCATION / ".nextupdate")
+    if next_update_file.exists():
+        with open(next_update_file, 'r') as _in_file:
+            next_merge = _in_file.read()
+    else:
+        next_merge = "Unknown"
+    return { 'response' : f"Successfully added \"{hostname}\" to ansible inventory. Next automated inventory merge is \"{next_merge}\"" }
 
 @router.get("/pubkey")
 async def get_public_keys():
