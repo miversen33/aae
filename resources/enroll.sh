@@ -80,7 +80,8 @@ validate_ssh_config(){
 
 get_ssh_key(){
     env="$1"
-    pubkey=$(curl -Lfs "${SSH_PUBKEY_LINK}/${env}")
+    # We do not care if the SSH Pubkey link we generated is insecure
+    pubkey=$(curl --insecure -Lfs "${SSH_PUBKEY_LINK}/${env}")
     touch "${SSH_AUTH_KEYS}"
     if ! grep -qF "${pubkey}" "${SSH_AUTH_KEYS}"; then
         debug "Ansible pubkey not found in root authorized keys. Fixing that"
@@ -93,7 +94,8 @@ enroll(){
     get_ssh_key "${ENVIRONMENT}"
     enroll_link="${ENROLL_LINK}?hostname=${HOSTNAME}&os_type=linux&environment=${ENVIRONMENT}&applications=${APPLICATIONS}" >/dev/null # For some reason this is printing null into the console...?
     debug "Enrolling with link: ${enroll_link}"
-    curl -Lfs "${enroll_link}"
+    # We do not care if the enroll link that we generated is secure or not
+    curl --insecure -Lfs "${enroll_link}"
 }
 
 interactive_mode(){
