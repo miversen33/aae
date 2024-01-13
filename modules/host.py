@@ -21,7 +21,7 @@ class Host():
     groups: Set[str]
     variables: Dict[str, Any]
 
-    def __init__(self, hostname: str, user: str = "", groups: List[str]|None = None, vars: Dict[str, Any]|None = None):
+    def __init__(self, hostname: str, user: str = "", groups: List[str]|None = None, vars: Dict[str, Any]|None = None, apps: List[str]|None = None):
         self.hostname = hostname
         self.groups = set()
         self.variables = dict()
@@ -32,6 +32,9 @@ class Host():
             vars = dict()
         for group in groups:
             self.groups.add(group)
+        if apps:
+            for app in apps:
+                vars[f'application_{app}'] = True
         for key, value in vars.items():
             self.variables[key] = value
 
@@ -61,14 +64,28 @@ class Host():
             self.groups.remove('ungrouped')
         self.groups.add(group_name)
 
+    def remove_group(self, group_name: str):
+        if group_name in self.groups:
+            self.groups.remove(group_name)
+        if len(self.groups) == 1 and 'all' in self.groups:
+            # Mark the host as ungrouped
+            self.groups.add('ungrouped')
+
     def get_groups(self) -> List[str]:
         return list(self.groups)
 
+    def has_app(self, application: str) -> bool:
+        return f'application_{application}' in self.variables.keys()
+
+    def add_app(self, application: str):
+        self.variables[f'application_{application}'] = True
+
+    def remove_app(self, application: str):
+        if self.variables.get(f'application_{application}'):
+            del self.variables[f'application_{application}']
+
     def __getstate__(self) -> object:
         return { self.hostname: self.variables } if len(self.variables) > 0 else { self.hostname: [] }
-
-    def remove_group(self, group_name: str):
-        self.groups.remove(group_name)
 
     def set_variable(self, var_name: str, value: Any):
         self.variables[var_name] = value
@@ -179,14 +196,17 @@ class Hosts():
             hosts = list()
         self.hosts = hosts
 
-    def add_host(self, host: Host|str, groups: List[str]|None = None, user: str = "root"):
+    def add_host(self, host: Host|str, groups: List[str]|None = None, user: str = "root", apps: List[str]|None = None):
         if not groups:
             groups = list()
+        if not apps:
+            apps = list()
         if host not in self.hosts:
             if isinstance(host, str):
                 host = Host(hostname=host)
             host.user = user
             [host.add_group(group) for group in groups]
+            [host.add_app(app) for app in apps]
             self.hosts.append(host)
 
     def remove_host(self, hostname: str) -> Host|None:

@@ -144,11 +144,9 @@ async def do_enroll(hostname: str = "", user: str = 'root', os_type: str = "", e
         # Nothing to do as the host is already enrolled
         return f"{hostname} is already enrolled"
     groups={'all', os_type, environment}
-    for app in app_list:
-        groups.add(app)
-    logger.debug(f"Adding {hostname} to the following groups. {os_type}, {environment}, {', '.join(app_list)}")
+    logger.debug(f"Adding {hostname} to the following groups. {os_type}, {environment} with applications {', '.join(app_list)}")
     
-    inventory.add_host(hostname, list(groups), user=user)
+    inventory.add_host(hostname, groups=list(groups), user=user, apps=app_list)
     inventory.save_to_disk(ANSIBLE_INVENTORY_LOCATION / 'hosts.yaml')
 
     next_merge=""
