@@ -78,7 +78,7 @@ def setup():
     if ANSIBLE_INVENTORY_LOCATION.exists() and ANSIBLE_INVENTORY_LOCATION.is_file():
         raise ValueError(f"Ansible location {_raw_ansible_inventory_location} is not a directory!")
     try:
-        Path(ANSIBLE_INVENTORY_LOCATION / "hosts.ini").touch()
+        Path(ANSIBLE_INVENTORY_LOCATION / "hosts.yaml").touch()
     except PermissionError:
         raise ValueError(f"Unable to write to hosts file in ansible location: {_raw_ansible_inventory_location}!")
     load_pubkey_locations()
