@@ -92,7 +92,7 @@ get_ssh_key(){
 enroll(){
     debug "Enrolling ${HOSTNAME} into ansible"
     get_ssh_key "${ENVIRONMENT}"
-    enroll_link="${ENROLL_LINK}?hostname=${HOSTNAME}&os_type=linux&environment=${ENVIRONMENT}&applications=${APPLICATIONS}" >/dev/null # For some reason this is printing null into the console...?
+    enroll_link="${ENROLL_LINK}?user=${USER}&hostname=${HOSTNAME}&os_type=linux&environment=${ENVIRONMENT}&applications=${APPLICATIONS}" >/dev/null # For some reason this is printing null into the console...?
     debug "Enrolling with link: ${enroll_link}"
     # We do not care if the enroll link that we generated is secure or not
     curl --insecure -Lfs "${enroll_link}"

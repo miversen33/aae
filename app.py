@@ -137,7 +137,7 @@ async def inventory(format: str = "json"):
     return Response(content = inventory.serialize(format), media_type='text/plain' if format != 'json' else 'application/json')
 
 @router.get("/do_enroll")
-async def do_enroll(hostname: str = "", os_type: str = "", environment: str = "", applications: str = ""):
+async def do_enroll(hostname: str = "", user: str = 'root', os_type: str = "", environment: str = "", applications: str = ""):
     app_list: List[str] = applications.split(',') if len(applications) > 0 else []
     inventory=get_inventory()
     if hostname in inventory:
@@ -148,7 +148,7 @@ async def do_enroll(hostname: str = "", os_type: str = "", environment: str = ""
         groups.add(app)
     logger.debug(f"Adding {hostname} to the following groups. {os_type}, {environment}, {', '.join(app_list)}")
     
-    inventory.add_host(hostname, list(groups))
+    inventory.add_host(hostname, list(groups), user=user)
     inventory.save_to_disk(ANSIBLE_INVENTORY_LOCATION / 'hosts.yaml')
 
     next_merge=""

@@ -17,13 +17,15 @@ class Host():
     Class representation of an individual host in an ansible inventory
     """
     hostname: str
+    user: str
     groups: Set[str]
     variables: Dict[str, Any]
 
-    def __init__(self, hostname: str, groups: List[str]|None = None, vars: Dict[str, Any]|None = None):
+    def __init__(self, hostname: str, user: str = "", groups: List[str]|None = None, vars: Dict[str, Any]|None = None):
         self.hostname = hostname
         self.groups = set()
         self.variables = dict()
+        self.user = user
         if not groups:
             groups = ["ungrouped"]
         if not vars:
@@ -40,10 +42,12 @@ class Host():
         return f'{self.hostname}({", ".join(self.groups)})'
 
     def __repr__(self) -> str:
-        return f'''<Host(hostname="{self.hostname}", groups={self.groups}, vars={self.variables})>'''
+        return f'''<Host(hostname="{self.hostname}", user="{self.user}", groups={self.groups}, vars={self.variables})>'''
 
     def _serialize_as_ini(self) -> str:
         entry = [self.hostname]
+        if self.user:
+            self.variables['ansible_user'] = self.user
         for variable_key, variable_value in self.variables.items():
             entry.append(f'{variable_key}={variable_value}')
         return " ".join(entry)
@@ -175,12 +179,13 @@ class Hosts():
             hosts = list()
         self.hosts = hosts
 
-    def add_host(self, host: Host|str, groups: List[str]|None = None):
+    def add_host(self, host: Host|str, groups: List[str]|None = None, user: str = "root"):
         if not groups:
             groups = list()
         if host not in self.hosts:
             if isinstance(host, str):
                 host = Host(hostname=host)
+            host.user = user
             [host.add_group(group) for group in groups]
             self.hosts.append(host)
 
@@ -269,7 +274,14 @@ class Hosts():
         """
         groups = dict()
         for group_name in self.get_groups():
-            groups[group_name] = { 'hosts' : { host.hostname:  host.variables if host.variables else None for host in self.get_hosts(group_name) } }
+            groups[group_name] = { 'hosts': dict() }
+            for host in self.get_hosts(group_name):
+                host_entry = host.variables if host.variables else dict()
+                if host.user and not host.variables.get('ansible_user'):
+                    host_entry['ansible_user'] = host.user
+                if len(host_entry) == 0:
+                    host_entry = None
+                groups[group_name]['hosts'][host.hostname] = host_entry
             # Some nastyness because None is how you tag a dictionary as an empty dict in yaml but ansible doesn't use "null" to indicate this
             # in their inventory scripts
         return yaml.dump(groups, Dumper=VerboseSafeDumper).replace('null', '')
