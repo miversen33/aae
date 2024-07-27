@@ -1,0 +1,31 @@
+services:
+  valkey:
+    image: valkey/valkey:7-alpine
+    ports: # We shouldn't have to declare this
+      - 6379:6379 # We shouldn't have to declare this
+  api:
+    image: aae:dev
+    build:
+      context: api/
+      dockerfile: Dockerfile
+    env_file: api/.env
+    ports:
+      - 8000:8000
+    depends_on:
+      - valkey
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./api/
+          target: /app/
+          ignore:
+            - ./api/venv
+            - ./api/__pycache__
+            - ./api/.dockerignore
+            - ./api/Dockerfile
+            - ./api/requirements.txt
+        - action: rebuild
+          path: ./api/requirements.txt
+        - action: rebuild
+          path: ./api/Dockerfile
+
