@@ -1,3 +1,7 @@
 venv/
-__pycache__/
-.env
+__pycache__
+api/local/
+.pytest_cache
+.*env
+.vscode
+api/test.py

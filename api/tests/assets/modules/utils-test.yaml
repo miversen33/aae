@@ -1,0 +1,6 @@
+raleigh:
+  hosts:
+    rlh-host3:
+    rlh-host4:
+  vars:
+    is_cloud: true
