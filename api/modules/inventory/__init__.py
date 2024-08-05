@@ -37,49 +37,56 @@ def transpile_to_inventory(
         [ inventory.add_group_var('all', key, value) for key, value in flat_vars.items() ]
     return inventory
 
-def normalize_yaml(yaml_as_dict: dict) -> dict[str, list[Host]|list[Group]|list[dict[str, Any]]]:
+def normalize_yaml(yaml_file: Path, yaml_as_dict: dict) -> dict[str, list[Host]|list[Group]|list[dict[str, Any]]]:
     flat_hosts: dict[str, Host] = {}
     flat_groups: dict[str, Group] = {}
 
-    keys = ['all']
-    mapping  = {'all': yaml_as_dict}
+    if yaml_file.parent.name in ['group_vars', 'host_vars']:
+        # we are processing a var yaml!
+        parent: Group|Host
+        item_name = yaml_file.name.replace(yaml_file.suffix, '')
+        if yaml_file.parent.name == 'group_vars':
+            if item_name not in flat_groups:
+                flat_groups[item_name] = Group(name=item_name)
+            parent = flat_groups[item_name]
+        else:
+            if item_name not in flat_hosts:
+                flat_hosts[item_name] = Host(name=item_name)
+            parent = flat_hosts[item_name]
+        [parent.add_var(key, value) for key, value in yaml_as_dict.items()]
+        return {'flat_hosts': {}, 'flat_groups': flat_groups, 'flat_vars': []}
+
+    # this is a bit nasty because we are cloning the input yaml completely...
+    mapping  = utils.dict_deep_merge({}, yaml_as_dict)
+    keys = [key for key in mapping.keys()]
     while len(keys) > 0:
         key = keys.pop()
-        raw_group = mapping[key]
-        if key not in flat_groups:
-            flat_groups[key] = Group(key)
-        group = flat_groups[key]
-        if raw_group is None:
+        item = mapping[key]
+        if isinstance(item, dict):
             if key not in flat_groups:
-                flat_groups[key] = Group(key)
-        elif raw_group and 'hosts' not in raw_group and 'children' not in raw_group and 'vars' not in raw_group:
-                for item_name, item in raw_group.items():
-                    if item_name not in keys:
-                        keys.append(item_name)
-                    if item_name not in mapping:
-                        mapping[item_name] = item
-        else:
-            if 'hosts' in raw_group:
-                for hostname, hostdetails in raw_group['hosts'].items():
+                flat_groups[key] = Group(name=key)
+            group = flat_groups[key]
+            if item_vars := item.get('vars'):
+                [group.add_var(key, value) for key, value in item_vars.items()]
+            if hosts := item.get('hosts'):
+                hosts: dict[str, None|dict[str,Any]]
+                for hostname, hostvars in hosts.items():
                     if hostname not in flat_hosts:
-                        flat_hosts[hostname] = Host(hostname)
+                        flat_hosts[hostname] = Host(name = hostname)
                     host = flat_hosts[hostname]
-                    if isinstance(hostdetails, dict):
-                        # there are host vars associated with this host
-                        [host.add_var(host_var_key, host_var_value) for host_var_key, host_var_value in hostdetails.items()]
-                    group.add_host(host)
-            if 'children' in raw_group:
-                for childgroup_name, childgroup_details in raw_group['children'].items():
-                    if childgroup_name not in flat_groups:
-                        flat_groups[childgroup_name] = Group(childgroup_name)
-                    childgroup = flat_groups[childgroup_name]
-                    group.add_child(childgroup)
-                    mapping[childgroup_name] = childgroup_details
-                    keys.append(childgroup_name)
-            if 'vars' in raw_group:
-                [group.add_var(group_var_key, group_var_value) for group_var_key, group_var_value in raw_group['vars'].items()]
+                    host.add_group(group)
+                    if isinstance(hostvars, dict):
+                        [host.add_var(key, value) for key, value in hostvars.items()]
+            if children := item.get('children'):
+                children: dict[str, dict|None]
+                for child_groupname, child_group in children.items():
+                    if child_groupname not in flat_groups:
+                        flat_groups[child_groupname] = Group(name = child_groupname)
+                    child = flat_groups[child_groupname]
+                    group.add_child(child)
+                    keys.append(child_groupname)
+                    mapping[child_groupname] = child_group
         del mapping[key]
-    del flat_groups['all']
     return {
         'flat_hosts': list(flat_hosts.values()),
         'flat_groups': list(flat_groups.values()),
@@ -412,7 +419,9 @@ class Inventory:
         hosts_dir = out_dir / 'host_vars'
         try:
             out_dir.mkdir(parents=True, exist_ok=True)
-            hosts_file.touch()
+            with open(hosts_file, 'w') as _:
+                # we are simply clearing out the host file
+                pass
             group_dir.mkdir(parents=True, exist_ok=True)
             hosts_dir.mkdir(parents=True, exist_ok=True)
             _ = group_dir / '.test'
@@ -520,6 +529,7 @@ class Inventory:
         flat_groups_group = []
         out_files = []
         for ini in ini_files:
+            # TODO: Check if file exists
             if ini not in out_files:
                 out_files.append(ini)
             if ini.suffix not in ['', '.ini']:
@@ -567,10 +577,18 @@ class Inventory:
                 continue
             if file in out_files:
                 out_files.remove(file)
-            normalized_yaml = normalize_yaml(_raw_yaml)
-            flat_vars_group.extend(normalized_yaml['flat_vars'])
-            flat_groups_group.extend(normalized_yaml['flat_groups'])
-            flat_hosts_group.extend(normalized_yaml['flat_hosts'])
+            if file.parent.name in ['host_vars', 'group_vars']:
+                # special handling because this is a vars file
+                if file.parent.name == 'group_vars':
+                    flat_groups_group.append(Group(name = file.name.replace('.'.join(file.suffixes), ''), vars=_raw_yaml))
+                else:
+                    flat_hosts_group.append(Host(name = file.name.replace('.'.join(file.suffixes), ''), vars=_raw_yaml))
+                
+            else:
+                normalized_yaml = normalize_yaml(file, _raw_yaml)
+                flat_vars_group.extend(normalized_yaml['flat_vars'])
+                flat_groups_group.extend(normalized_yaml['flat_groups'])
+                flat_hosts_group.extend(normalized_yaml['flat_hosts'])
         return transpile_to_inventory(flat_vars_group=flat_vars_group, flat_hosts_group=flat_hosts_group, flat_groups_group=flat_groups_group), out_files
 
     @staticmethod
